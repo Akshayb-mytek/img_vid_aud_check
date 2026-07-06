@@ -1,0 +1,197 @@
+name: VIDEO TEST Backend Deploy (EC2 Docker)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ----------------------------------------------------
+      # STEP 1: Checkout repository
+      # ----------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # ----------------------------------------------------
+      # STEP 2: Configure AWS credentials
+      # ----------------------------------------------------
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      # ----------------------------------------------------
+      # STEP 3: Set variables
+      # ----------------------------------------------------
+      - name: Set variables
+        run: |
+          echo "EC2_USER=ec2-user" >> $GITHUB_ENV
+          echo "SSM_ENV_PARAM=/video_back/test/env" >> $GITHUB_ENV
+          echo "IMAGE_NAME=videotest-backend-app" >> $GITHUB_ENV
+          echo "CONTAINER_NAME=videotest-backend" >> $GITHUB_ENV
+          echo "SSM_LAST_IMAGE_PARAM=/videotest_back/last-successful-image" >> $GITHUB_ENV
+          echo "SSM_SSH_KEY_PARAM=/video_test/aws/EC2_SSH_KEY" >> $GITHUB_ENV
+          echo "SSH_KEY_FILE=video.pem" >> $GITHUB_ENV
+          echo "EC2_TAG_NAME=video-moderation" >> $GITHUB_ENV
+          echo "TARGET_GROUP_NAME=video-test-tg" >> $GITHUB_ENV
+          echo "IMAGE_TAG=${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      # ----------------------------------------------------
+      # STEP 4: Fetch .env
+      # ----------------------------------------------------
+      - name: Fetch backend env
+        run: |
+          > .env
+
+          aws ssm get-parameter \
+            --name "$SSM_ENV_PARAM" \
+            --with-decryption \
+            --query "Parameter.Value" \
+            --output text >> .env
+
+          echo "Env file ready"
+          wc -l .env
+
+      # ----------------------------------------------------
+      # STEP 5: Build Docker image
+      # ----------------------------------------------------
+      - name: Build Docker image
+        run: |
+          docker build --cache-from=$IMAGE_NAME:latest -t $IMAGE_NAME:$IMAGE_TAG .
+          docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:latest
+
+      # ----------------------------------------------------
+      # STEP 6: Save Docker image
+      # ----------------------------------------------------
+      - name: Save Docker image
+        run: |
+          docker save $IMAGE_NAME:$IMAGE_TAG | gzip -1 > backend-app.tar.gz
+
+      # ----------------------------------------------------
+      # STEP 7: Fetch SSH key
+      # ----------------------------------------------------
+      - name: Fetch SSH key
+        run: |
+          mkdir -p ~/.ssh
+          aws ssm get-parameter \
+            --name "$SSM_SSH_KEY_PARAM" \
+            --with-decryption \
+            --query "Parameter.Value" \
+            --output text > ~/.ssh/$SSH_KEY_FILE
+
+          chmod 600 ~/.ssh/$SSH_KEY_FILE
+
+      # ----------------------------------------------------
+      # STEP 8: Get EC2 IP
+      # ----------------------------------------------------
+      - name: Get EC2 IP
+        id: ec2ip
+        run: |
+          IP=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=$EC2_TAG_NAME" "Name=instance-state-name,Values=running" \
+            --query "Reservations[].Instances[].PublicIpAddress" \
+            --output text)
+
+          echo "ec2_ip=$IP" >> $GITHUB_OUTPUT
+
+      # ----------------------------------------------------
+      # STEP 9: Get previous image (rollback)
+      # ----------------------------------------------------
+      - name: Get previous image
+        run: |
+          PREV_IMAGE=$(aws ssm get-parameter \
+            --name "$SSM_LAST_IMAGE_PARAM" \
+            --query "Parameter.Value" \
+            --output text 2>/dev/null || echo "")
+
+          echo "PREV_IMAGE=$PREV_IMAGE" >> $GITHUB_ENV
+
+      # ----------------------------------------------------
+      # STEP 10: Deploy to EC2
+      # ----------------------------------------------------
+      - name: Deploy to EC2
+        run: |
+          scp -o StrictHostKeyChecking=no \
+            -i ~/.ssh/$SSH_KEY_FILE \
+            backend-app.tar.gz .env \
+            $EC2_USER@${{ steps.ec2ip.outputs.ec2_ip }}:/home/ec2-user/
+
+          ssh -o StrictHostKeyChecking=no \
+            -i ~/.ssh/$SSH_KEY_FILE \
+            $EC2_USER@${{ steps.ec2ip.outputs.ec2_ip }} << EOF
+          set -e
+
+          mv -f ~/".env" ~/.env 2>/dev/null || true
+          
+          docker image prune -f || true
+
+          gunzip -c ~/backend-app.tar.gz | docker load
+          rm -f ~/backend-app.tar.gz
+
+          docker rm -f $CONTAINER_NAME 2>/dev/null || true
+
+          docker run -d \
+            --name $CONTAINER_NAME \
+            -p 8000:8000 \
+            --env-file ~/.env \
+            --restart unless-stopped \
+            $IMAGE_NAME:$IMAGE_TAG
+
+          docker ps
+          EOF
+
+      # ----------------------------------------------------
+      # STEP 11: ALB Health Check + Rollback
+      # ----------------------------------------------------
+      - name: ALB Health Check + Rollback
+        id: health
+        run: |
+          TG_ARN=$(aws elbv2 describe-target-groups \
+            --names $TARGET_GROUP_NAME \
+            --query 'TargetGroups[0].TargetGroupArn' \
+            --output text)
+
+          for i in {1..10}; do
+            STATUS=$(aws elbv2 describe-target-health \
+              --target-group-arn $TG_ARN \
+              --query 'TargetHealthDescriptions[0].TargetHealth.State' \
+              --output text)
+
+            echo "STATUS: $STATUS"
+
+            if [ "$STATUS" = "healthy" ]; then
+              break
+            fi
+
+            sleep 10
+          done
+
+          if [ "$STATUS" != "healthy" ]; then
+            echo "❌ Unhealthy - rolling back"
+
+            if [ -n "$PREV_IMAGE" ]; then
+              ssh -o StrictHostKeyChecking=no \
+                -i ~/.ssh/$SSH_KEY_FILE \
+                $EC2_USER@${{ steps.ec2ip.outputs.ec2_ip }} "
+                  docker rm -f $CONTAINER_NAME || true
+                  docker run -d -p 8000:8000 --name $CONTAINER_NAME $PREV_IMAGE
+                "
+            fi
+
+            exit 1
+          fi
+
+          echo "✅ Healthy"
+
+          aws ssm put-parameter \
+            --name "$SSM_LAST_IMAGE_PARAM" \
+            --type "String" \
+            --value "$IMAGE_NAME:$IMAGE_TAG" \
+            --overwrite

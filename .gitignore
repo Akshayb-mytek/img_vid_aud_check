@@ -1,0 +1,24 @@
+# Environments
+venv/
+env/
+.env
+__pycache__/
+*.pyc
+
+# Heavy ML Models and Weights
+*.pt
+*.tflite
+*.onnx
+*.task
+app/models/
+models/
+
+# Local Binaries and Temp
+bin/
+app/temp/
+test_unified_api.py
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
