@@ -1,8 +1,14 @@
 import asyncio
 from concurrent.futures import ProcessPoolExecutor
 from app.config import settings
-from app.services.audio.models_loader import init_worker_models
 import structlog
+
+def init_worker():
+    try:
+        from app.services.audio.models_loader import init_worker_models
+        init_worker_models()
+    except KeyboardInterrupt:
+        pass
 
 logger = structlog.get_logger()
 _pool: ProcessPoolExecutor | None = None
@@ -12,7 +18,7 @@ def start_worker_pool():
     logger.info("Starting ProcessPoolExecutor...", size=settings.audio_worker_pool_size)
     _pool = ProcessPoolExecutor(
         max_workers=settings.audio_worker_pool_size,
-        initializer=init_worker_models
+        initializer=init_worker
     )
 
 def stop_worker_pool():

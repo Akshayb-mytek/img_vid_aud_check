@@ -1,4 +1,10 @@
 import os
+
+# Suppress annoying C++ logs from MediaPipe and ONNXRuntime
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["GLOG_minloglevel"] = "2"
+os.environ["ORT_LOGGING_LEVEL"] = "3"
+
 import structlog
 import asyncio
 from contextlib import asynccontextmanager

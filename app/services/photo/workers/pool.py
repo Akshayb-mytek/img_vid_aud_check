@@ -11,8 +11,11 @@ def init_worker():
     This forces the MediaPipe models to load once per worker process.
     """
     # Import inside the worker so it doesn't load in the main thread prematurely
-    from app.services.photo.models_loader import get_models
-    get_models()
+    try:
+        from app.services.photo.models_loader import get_models
+        get_models()
+    except KeyboardInterrupt:
+        pass
 
 def get_pool() -> ProcessPoolExecutor:
     global _pool
