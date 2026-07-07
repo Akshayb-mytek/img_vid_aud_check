@@ -8,7 +8,7 @@ os.environ["ORT_LOGGING_LEVEL"] = "3"
 import structlog
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from app.middleware.rate_limit import RateLimitMiddleware
@@ -78,20 +78,6 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
-
-MAX_UPLOAD_SIZE = 150 * 1024 * 1024 # 150 MB
-
-@app.middleware("http")
-async def max_file_size_middleware(request: Request, call_next):
-    if request.method == "POST":
-        content_length = request.headers.get("content-length")
-        if content_length:
-            if int(content_length) > MAX_UPLOAD_SIZE:
-                return JSONResponse(
-                    status_code=413,
-                    content={"error": f"Payload too large. Max size is {MAX_UPLOAD_SIZE // (1024*1024)}MB."}
-                )
-    return await call_next(request)
 
 app.add_middleware(RateLimitMiddleware)
 
