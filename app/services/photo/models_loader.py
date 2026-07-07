@@ -30,8 +30,16 @@ class MediaPipeModels:
         if not os.path.exists(filepath):
             logger.info(f"Downloading missing model...", model=os.path.basename(filepath))
             os.makedirs(os.path.dirname(filepath), exist_ok=True)
-            urllib.request.urlretrieve(url, filepath)
-            logger.info("Model downloaded successfully.", model=os.path.basename(filepath))
+            tmp_path = filepath + ".tmp"
+            try:
+                urllib.request.urlretrieve(url, tmp_path)
+                os.rename(tmp_path, filepath)
+                logger.info("Model downloaded successfully.", model=os.path.basename(filepath))
+            except Exception as e:
+                logger.error("Model download failed.", error=str(e))
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+                raise
 
     def _load_models(self):
         models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "models")
