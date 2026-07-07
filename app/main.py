@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from app.middleware.rate_limit import RateLimitMiddleware
+
 from app.routes.moderation import moderation_router
 from app.routes.audio import router as audio_router
 from app.routes.photo import router as photo_router
@@ -79,7 +79,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-app.add_middleware(RateLimitMiddleware)
+
 
 # Existing Moderation Routes (/moderation/analyze, /moderation/health)
 app.include_router(moderation_router)
