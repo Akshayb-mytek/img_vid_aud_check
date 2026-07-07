@@ -1,22 +1,20 @@
 import os
 import io
+
+# ---------------------------------------------------------
+# FFmpeg Resolution (Production vs Local)
+# ---------------------------------------------------------
+# In production (Docker/AWS), ffmpeg is installed via apt-get and is in the system PATH.
+# Locally (Windows), we don't force users to install it system-wide. We use a local bin/ folder.
+bin_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))), "bin")
+if os.path.exists(bin_dir) and bin_dir not in os.environ.get("PATH", ""):
+    # Inject local bin/ into PATH so pydub finds it natively without hardcoded paths
+    os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+
 import soundfile as sf
 import librosa
 import pydub
-import imageio_ffmpeg
 import numpy as np
-
-# Configure pydub to use the local bin/ffmpeg.exe if downloaded via the script
-# This prevents "CORRUPT_AUDIO" errors on Windows environments missing system ffmpeg.
-try:
-    import imageio_ffmpeg
-    local_ffmpeg = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))), "bin", "ffmpeg.exe")
-    if os.path.exists(local_ffmpeg):
-        pydub.AudioSegment.converter = local_ffmpeg
-    else:
-        pydub.AudioSegment.converter = imageio_ffmpeg.get_ffmpeg_exe()
-except Exception:
-    pass
 
 from app.services.audio.utils.errors import AudioVerificationError
 from app.services.audio.constants import (
