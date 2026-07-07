@@ -93,9 +93,12 @@ def init_worker_models():
     _MODELS["whisper"] = WhisperModel(WHISPER_MODEL_SIZE, device="cpu", compute_type="int8")
     
     # 3. SpeechBrain ECAPA-TDNN
+    # Ensure models save to an absolute path so it works regardless of where the server is run from
+    models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "models")
+    speechbrain_dir = os.path.join(models_dir, "spkrec-ecapa-voxceleb")
     _MODELS["ecapa"] = speechbrain.inference.SpeakerRecognition.from_hparams(
         source="speechbrain/spkrec-ecapa-voxceleb", 
-        savedir="models/spkrec-ecapa-voxceleb"
+        savedir=speechbrain_dir
     )
     
     # 4. PANNs
