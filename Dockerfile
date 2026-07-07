@@ -18,8 +18,15 @@ RUN pip install --no-cache-dir torch torchvision --index-url https://download.py
 # Install remaining deps
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy source code
 COPY . .
 
+# Pre-download all AI models to bake them directly into the Docker image.
+# This ensures zero-dependency, sub-second startup times in production.
+RUN python scripts/download_models.py
+
+# Expose the API port
 EXPOSE 8000
 
+# Start the application using Uvicorn ASGI server
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
