@@ -81,41 +81,46 @@ def init_worker_models():
     # Prevent OpenMP thread contention crash in Windows ProcessPoolExecutor
     torch.set_num_threads(1)
     
-    # 1. Silero VAD
-    vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
-                                      model='silero_vad',
-                                      force_reload=False,
-                                      trust_repo=True)
-    _MODELS["vad"] = vad_model
-    _MODELS["vad_utils"] = utils
-
-    # 2. Faster Whisper
-    _MODELS["whisper"] = WhisperModel(WHISPER_MODEL_SIZE, device="cpu", compute_type="int8")
-    
-    # 3. SpeechBrain ECAPA-TDNN
-    # Ensure models save to an absolute path so it works regardless of where the server is run from
+    from filelock import FileLock
     models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "models")
-    speechbrain_dir = os.path.join(models_dir, "spkrec-ecapa-voxceleb")
-    _MODELS["ecapa"] = speechbrain.inference.SpeakerRecognition.from_hparams(
-        source="speechbrain/spkrec-ecapa-voxceleb", 
-        savedir=speechbrain_dir
-    )
+    os.makedirs(models_dir, exist_ok=True)
+    global_lock_path = os.path.join(models_dir, "audio_models_download.lock")
     
-    # 4. PANNs
-    _MODELS["panns"] = panns_inference.AudioTagging(checkpoint_path=None, device='cpu')
+    with FileLock(global_lock_path):
+        # 1. Silero VAD
+        vad_model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad',
+                                          model='silero_vad',
+                                          force_reload=False,
+                                          trust_repo=True)
+        _MODELS["vad"] = vad_model
+        _MODELS["vad_utils"] = utils
     
-    # 5. Pyannote Overlapped Speech
-    if not settings.use_overlap_heuristic_fallback and settings.hf_token:
-        try:
-            pipeline = Pipeline.from_pretrained(
-                "pyannote/overlapped-speech-detection",
-                use_auth_token=settings.hf_token
-            )
-            _MODELS["pyannote"] = pipeline
-        except Exception:
+        # 2. Faster Whisper
+        _MODELS["whisper"] = WhisperModel(WHISPER_MODEL_SIZE, device="cpu", compute_type="int8")
+        
+        # 3. SpeechBrain ECAPA-TDNN
+        # Ensure models save to an absolute path so it works regardless of where the server is run from
+        speechbrain_dir = os.path.join(models_dir, "spkrec-ecapa-voxceleb")
+        _MODELS["ecapa"] = speechbrain.inference.SpeakerRecognition.from_hparams(
+            source="speechbrain/spkrec-ecapa-voxceleb", 
+            savedir=speechbrain_dir
+        )
+        
+        # 4. PANNs
+        _MODELS["panns"] = panns_inference.AudioTagging(checkpoint_path=None, device='cpu')
+        
+        # 5. Pyannote Overlapped Speech
+        if not settings.use_overlap_heuristic_fallback and settings.hf_token:
+            try:
+                pipeline = Pipeline.from_pretrained(
+                    "pyannote/overlapped-speech-detection",
+                    use_auth_token=settings.hf_token
+                )
+                _MODELS["pyannote"] = pipeline
+            except Exception:
+                _MODELS["pyannote"] = None
+        else:
             _MODELS["pyannote"] = None
-    else:
-        _MODELS["pyannote"] = None
 
     # 6. Warmup Inference
     try:

@@ -89,14 +89,17 @@ class MediaPipeModels:
         )
         self.image_segmenter = mp.tasks.vision.ImageSegmenter.create_from_options(seg_options)
 
-        # 5. Identity Verification (InsightFace)
-        # Note: This will download 'buffalo_l' models to ~/.insightface on first run if missing.
-        self.face_analysis = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
-        self.face_analysis.prepare(ctx_id=0, det_size=(640, 640))
-
-        # 6. Explicit Content (NudeNet)
-        # Note: This downloads the default model (~80MB) to ~/.NudeNet on first run if missing.
-        self.nude_detector = NudeDetector()
+        from filelock import FileLock
+        global_lock_path = os.path.join(models_dir, "insightface_nudenet_download.lock")
+        with FileLock(global_lock_path):
+            # 5. Identity Verification (InsightFace)
+            # Note: This will download 'buffalo_l' models to ~/.insightface on first run if missing.
+            self.face_analysis = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
+            self.face_analysis.prepare(ctx_id=0, det_size=(640, 640))
+    
+            # 6. Explicit Content (NudeNet)
+            # Note: This downloads the default model (~80MB) to ~/.NudeNet on first run if missing.
+            self.nude_detector = NudeDetector()
 
 def get_models() -> MediaPipeModels:
     return MediaPipeModels.get_instance()
