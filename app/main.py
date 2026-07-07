@@ -8,7 +8,7 @@ os.environ["ORT_LOGGING_LEVEL"] = "3"
 import structlog
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.middleware.rate_limit import RateLimitMiddleware
@@ -109,7 +109,23 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
-app.add_middleware(RateLimitMiddleware)
+MAX_UPLOAD_SIZE = 150 * 1024 * 1024 # 150 MB
+
+if settings.enable_max_file_size:
+    @app.middleware("http")
+    async def max_file_size_middleware(request: Request, call_next):
+        if request.method == "POST":
+            content_length = request.headers.get("content-length")
+            if content_length:
+                if int(content_length) > MAX_UPLOAD_SIZE:
+                    return JSONResponse(
+                        status_code=413,
+                        content={"error": f"Payload too large. Max size is {MAX_UPLOAD_SIZE // (1024*1024)}MB."}
+                    )
+        return await call_next(request)
+
+if settings.enable_rate_limits:
+    app.add_middleware(RateLimitMiddleware)
 
 # Existing Moderation Routes (/moderation/analyze, /moderation/health)
 app.include_router(moderation_router)

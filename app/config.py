@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     port: int = 8000
     debug: bool = False
     
+    # Optional Middleware Toggles (Off by default, as Node.js Gateway handles this)
+    enable_rate_limits: bool = False
+    enable_max_file_size: bool = False
+    
     # Audio Settings
     hf_token: str = ""
     use_overlap_heuristic_fallback: bool = False
