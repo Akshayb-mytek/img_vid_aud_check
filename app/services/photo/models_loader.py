@@ -3,6 +3,10 @@ import mediapipe as mp
 import insightface
 from insightface.app import FaceAnalysis
 from nudenet import NudeDetector
+import urllib.request
+import structlog
+
+logger = structlog.get_logger()
 
 class MediaPipeModels:
     _instance = None
@@ -22,11 +26,19 @@ class MediaPipeModels:
             cls._instance = cls()
         return cls._instance
 
+    def _ensure_model_exists(self, filepath: str, url: str):
+        if not os.path.exists(filepath):
+            logger.info(f"Downloading missing model...", model=os.path.basename(filepath))
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            urllib.request.urlretrieve(url, filepath)
+            logger.info("Model downloaded successfully.", model=os.path.basename(filepath))
+
     def _load_models(self):
         models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "models")
         
         # 1. Face Detector
         fd_path = os.path.join(models_dir, "blaze_face_short_range.tflite")
+        self._ensure_model_exists(fd_path, "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite")
         fd_options = mp.tasks.vision.FaceDetectorOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=fd_path),
             min_detection_confidence=0.5
@@ -35,6 +47,7 @@ class MediaPipeModels:
 
         # 2. Pose Landmarker
         pl_path = os.path.join(models_dir, "pose_landmarker_heavy.task")
+        self._ensure_model_exists(pl_path, "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task")
         pl_options = mp.tasks.vision.PoseLandmarkerOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=pl_path),
             output_segmentation_masks=False
@@ -43,6 +56,7 @@ class MediaPipeModels:
 
         # 3. Face Landmarker (with blendshapes and iris)
         fl_path = os.path.join(models_dir, "face_landmarker.task")
+        self._ensure_model_exists(fl_path, "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task")
         fl_options = mp.tasks.vision.FaceLandmarkerOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=fl_path),
             output_face_blendshapes=True,
@@ -53,6 +67,7 @@ class MediaPipeModels:
 
         # 4. Image Segmenter (Selfie Multiclass)
         seg_path = os.path.join(models_dir, "selfie_multiclass_256x256.tflite")
+        self._ensure_model_exists(seg_path, "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/1/selfie_multiclass_256x256.tflite")
         seg_options = mp.tasks.vision.ImageSegmenterOptions(
             base_options=mp.tasks.BaseOptions(model_asset_path=seg_path),
             output_category_mask=True,
