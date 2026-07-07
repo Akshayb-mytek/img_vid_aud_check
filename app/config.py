@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     # Audio Settings
     hf_token: str = ""
     use_overlap_heuristic_fallback: bool = False
+    ffmpeg_bin_dir: str = ""
     audio_worker_pool_size: int = 2
     audio_request_timeout_seconds: int = 180
     

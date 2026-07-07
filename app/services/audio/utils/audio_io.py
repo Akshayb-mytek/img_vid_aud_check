@@ -5,11 +5,21 @@ import io
 # FFmpeg Resolution (Production vs Local)
 # ---------------------------------------------------------
 # In production (Docker/AWS), ffmpeg is installed via apt-get and is in the system PATH.
-# Locally (Windows), we don't force users to install it system-wide. We use a local bin/ folder.
-bin_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))), "bin")
-if os.path.exists(bin_dir) and bin_dir not in os.environ.get("PATH", ""):
-    # Inject local bin/ into PATH so pydub finds it natively without hardcoded paths
-    os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+# Locally (Windows), we don't force users to install it system-wide. We use a local bin/ folder, or a custom ENV variable.
+
+import os
+import io
+from app.config import settings
+
+# 1. Check if user provided a custom FFmpeg directory via environment variable
+custom_bin = settings.ffmpeg_bin_dir
+if custom_bin and os.path.exists(custom_bin) and custom_bin not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = custom_bin + os.pathsep + os.environ.get("PATH", "")
+else:
+    # 2. Fall back to local project bin/ folder if setup.bat was used
+    local_bin = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))), "bin")
+    if os.path.exists(local_bin) and local_bin not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = local_bin + os.pathsep + os.environ.get("PATH", "")
 
 import soundfile as sf
 import librosa
