@@ -8,7 +8,7 @@ os.environ["ORT_LOGGING_LEVEL"] = "3"
 import structlog
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.middleware.rate_limit import RateLimitMiddleware
@@ -79,6 +79,20 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+MAX_UPLOAD_SIZE = 150 * 1024 * 1024 # 150 MB
+
+@app.middleware("http")
+async def max_file_size_middleware(request: Request, call_next):
+    if request.method == "POST":
+        content_length = request.headers.get("content-length")
+        if content_length:
+            if int(content_length) > MAX_UPLOAD_SIZE:
+                return JSONResponse(
+                    status_code=413,
+                    content={"error": f"Payload too large. Max size is {MAX_UPLOAD_SIZE // (1024*1024)}MB."}
+                )
+    return await call_next(request)
+
 app.add_middleware(RateLimitMiddleware)
 
 # Existing Moderation Routes (/moderation/analyze, /moderation/health)
@@ -92,4 +106,35 @@ app.include_router(photo_router, prefix="/moderation/photo-verify", tags=["Photo
 
 @app.get("/health")
 def health():
+    # Check if worker pools are dead/broken due to a crash
+    from app.services.audio.workers.pool import get_pool as get_audio_pool
+    
+    photo_broken = False
+    audio_broken = False
+    
+    try:
+        photo_pool = start_photo_pool()
+        if getattr(photo_pool, "_broken", False):
+            photo_broken = True
+    except Exception:
+        pass
+        
+    try:
+        audio_pool = get_audio_pool()
+        if getattr(audio_pool, "_broken", False):
+            audio_broken = True
+    except Exception:
+        pass
+        
+    if photo_broken or audio_broken:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "message": "Process pool broken",
+                "photo_broken": photo_broken,
+                "audio_broken": audio_broken
+            }
+        )
+        
     return {"status": "ok", "photo_api_ready": IS_PHOTO_READY}
