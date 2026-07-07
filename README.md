@@ -34,6 +34,23 @@ bash setup.sh
 
 *(This script will create a virtual environment, install all `requirements.txt` dependencies safely, download FFmpeg into a local `bin/` directory, and generate a `.env` file).*
 
+### Alternative: Manual Setup
+If you prefer not to use the automated scripts, you can manually configure your environment:
+```bash
+# 1. Create and activate a virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows use: .\venv\Scripts\activate
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Setup local FFmpeg
+python scripts/install_ffmpeg.py
+
+# 4. Create your environment file
+cp .env.example .env      # On Windows use: copy .env.example .env
+```
+
 ### 3. Configure `.env`
 Open the newly created `.env` file in the root directory and fill in the required values (like your HuggingFace token and AWS credentials).
 
